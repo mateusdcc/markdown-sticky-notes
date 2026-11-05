@@ -67,9 +67,27 @@ struct NoteInteractionTests {
         controller.focus()
         controller.refreshInteraction(optionHeld: false)
         assert(abs(window.alphaValue - 0.8) < 0.001)
+        let orange = controls[1] as! OpacitySlider
+        orange.setTrackingOpacity(true)
+        controller.refreshInteraction(optionHeld: false) // The periodic refresh must preserve preview.
+        assert(abs(window.alphaValue - 0.3) < 0.001)
+        assert(!window.ignoresMouseEvents)
+        orange.doubleValue = 0.45
+        _ = orange.sendAction(orange.action, to: orange.target)
+        assert(abs(window.alphaValue - 0.45) < 0.001)
+        let hint = NSApp.windows.first { panel in
+            panel.contentView?.subviews.contains { view in
+                (view as? NSTextField)?.stringValue == "Changing opacity of unfocused… 45%"
+            } == true
+        }
+        assert(hint?.isVisible == true && hint?.ignoresMouseEvents == true)
+        assert(window.isKeyWindow)
+        orange.setTrackingOpacity(false)
+        assert(hint?.isVisible == false)
+        assert(abs(window.alphaValue - 0.8) < 0.001)
         window.resignKey()
         controller.refreshInteraction(optionHeld: false)
-        assert(abs(window.alphaValue - 0.3) < 0.001)
+        assert(abs(window.alphaValue - 0.45) < 0.001)
 
         let encoder = JSONEncoder()
         let decoder = JSONDecoder()

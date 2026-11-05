@@ -96,10 +96,14 @@ class NoteWindowController: NSWindowController, NSWindowDelegate {
         // Two slim sliders share the original opacity control's footprint.
         for index in 0...1 {
             let label = index == 0 ? "Focused opacity" : "Unfocused opacity"
-            let slider = NSSlider(frame: NSRect(x: xOffset, y: index == 0 ? 11 : 0, width: 50, height: 11))
+            let slider = OpacitySlider(frame: NSRect(x: xOffset, y: index == 0 ? 11 : 0, width: 50, height: 11))
             let cell = OpacitySliderCell()
             cell.fillColor = index == 0 ? .systemBlue : .systemOrange
             slider.cell = cell
+            if index == 1 {
+                slider.previewUnfocusedOpacity = true
+                slider.onTrackingChanged = { [weak self] in self?.refreshInteraction() }
+            }
             slider.controlSize = .mini
             slider.minValue = 0.2
             slider.maxValue = 1.0
@@ -476,8 +480,9 @@ class NoteWindowController: NSWindowController, NSWindowDelegate {
 
     func refreshInteraction(optionHeld: Bool = NSEvent.modifierFlags.contains(.option)) {
         guard let window = window else { return }
-        let focused = window.isKeyWindow
-        let ignoresMouse = note.alwaysOnTop && !focused && !optionHeld
+        let previewing = (unfocusedOpacitySlider as? OpacitySlider)?.isTrackingOpacity == true
+        let focused = window.isKeyWindow && !previewing
+        let ignoresMouse = note.alwaysOnTop && !window.isKeyWindow && !optionHeld && !previewing
         if window.ignoresMouseEvents != ignoresMouse {
             window.ignoresMouseEvents = ignoresMouse
         }
@@ -518,6 +523,73 @@ class NoteWindowController: NSWindowController, NSWindowDelegate {
 }
 
 // MARK: - Titlebar Views
+
+/// Keeps native slider tracking, with temporary feedback for the unfocused control.
+class OpacitySlider: NSSlider {
+    var previewUnfocusedOpacity = false
+    var onTrackingChanged: (() -> Void)?
+    private(set) var isTrackingOpacity = false
+    private var feedbackPanel: NSPanel?
+    private let feedbackLabel = NSTextField(labelWithString: "")
+
+    override func mouseDown(with event: NSEvent) {
+        setTrackingOpacity(true)
+        defer { setTrackingOpacity(false) }
+        super.mouseDown(with: event)
+    }
+
+    func setTrackingOpacity(_ tracking: Bool) {
+        guard previewUnfocusedOpacity else { return }
+        isTrackingOpacity = tracking
+        if tracking {
+            updateFeedback()
+        } else {
+            feedbackPanel?.orderOut(nil)
+        }
+        onTrackingChanged?()
+    }
+
+    override func sendAction(_ action: Selector?, to target: Any?) -> Bool {
+        let sent = super.sendAction(action, to: target)
+        if isTrackingOpacity { updateFeedback() }
+        return sent
+    }
+
+    private func updateFeedback() {
+        if feedbackPanel == nil {
+            let panel = NSPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+            panel.isOpaque = false
+            panel.backgroundColor = .clear
+            panel.hasShadow = true
+            panel.ignoresMouseEvents = true
+            panel.hidesOnDeactivate = false
+            panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+            let content = NSView()
+            content.wantsLayer = true
+            content.layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.96).cgColor
+            content.layer?.cornerRadius = 6
+            feedbackLabel.font = .systemFont(ofSize: 11)
+            content.addSubview(feedbackLabel)
+            panel.contentView = content
+            feedbackPanel = panel
+        }
+        guard let panel = feedbackPanel else { return }
+        feedbackLabel.stringValue = "Changing opacity of unfocused… \(Int((doubleValue * 100).rounded()))%"
+        feedbackLabel.sizeToFit()
+        feedbackLabel.setFrameOrigin(NSPoint(x: 8, y: 6))
+        let size = NSSize(width: feedbackLabel.frame.width + 16, height: feedbackLabel.frame.height + 12)
+        let cursor = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first { $0.frame.contains(cursor) } ?? NSScreen.main
+        let visible = screen?.visibleFrame ?? NSRect(origin: .zero, size: size)
+        let origin = NSPoint(
+            x: min(max(cursor.x + 14, visible.minX), visible.maxX - size.width),
+            y: min(max(cursor.y - size.height - 18, visible.minY), visible.maxY - size.height)
+        )
+        panel.level = NSWindow.Level(rawValue: (window?.level.rawValue ?? NSWindow.Level.floating.rawValue) + 1)
+        panel.setFrame(NSRect(origin: origin, size: size), display: true)
+        panel.orderFrontRegardless()
+    }
+}
 
 private class OpacitySliderCell: NSSliderCell {
     var fillColor: NSColor = .systemBlue

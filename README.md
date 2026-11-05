@@ -18,7 +18,7 @@ A native macOS sticky note app with Obsidian-style markdown live preview, built 
 - **Pin on Top**: Keep important notes above all windows (Cmd+Shift+P)
 - **Multiple Colors**: Yellow, pink, blue, green, purple, orange
 - **Click-Through Pinned Notes**: Unfocused pinned notes pass clicks to the app underneath. Hold Option (⌥) and click a note to focus and edit it in your current Space without activating the app’s other windows.
-- **Adjustable Opacity**: Separate focused and unfocused opacity in Settings (Cmd+,). Two stacked titlebar sliders adjust each note: blue for focused opacity, orange for unfocused opacity.
+- **Adjustable Opacity**: Separate focused and unfocused opacity in Settings (Cmd+,). Two stacked titlebar sliders adjust each note: blue for focused opacity, orange for unfocused opacity. Dragging the orange slider previews the unfocused appearance with a cursor label showing the percentage.
 - **Auto-Save**: Never lose your notes
 
 ### Keyboard Shortcuts
