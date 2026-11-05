@@ -6,7 +6,7 @@
 //   HighlightStyle                  — 보조 토큰 색상
 //   EditorView.theme()              — CSS 클래스 정의
 
-import { EditorState, StateField, EditorSelection } from '@codemirror/state';
+import { EditorState, StateField, StateEffect, EditorSelection } from '@codemirror/state';
 import { EditorView, keymap, Decoration, WidgetType, ViewPlugin } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
@@ -86,6 +86,46 @@ import { GFM } from '@lezer/markdown';
 import { search, searchKeymap, highlightSelectionMatches, openSearchPanel } from '@codemirror/search';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
+import * as typlet from 'typlet';
+import 'typlet/fonts/typlet.css';
+
+// Math renderer configuration ('typst' | 'latex') and custom preamble/overhead
+let mathRenderer = 'typst';
+let mathPreamble = '#let inner(x, y) = $lr(angle.l #x, #y angle.r)$';
+const setMathRendererEffect = StateEffect.define();
+
+function normalizeTypstMath(str) {
+  if (!str) return '';
+  return str.replace(
+    /(?<![\w.])angle\.(l|r(?:\.(?:curly|dot|closed|double))?)(?![\w])/g,
+    'chevron.$1'
+  );
+}
+
+function computeEffectiveTypstPreamble(raw) {
+  const normalized = normalizeTypstMath(raw).trim();
+  if (!normalized) return undefined;
+  try {
+    typlet.renderToString('0', { preamble: normalized, strict: 'ignore' });
+    return normalized;
+  } catch (_) {
+    // Keep only valid lines if user is mid-typing a definition in Settings
+    const validLines = [];
+    for (const line of normalized.split('\n')) {
+      const candidate = [...validLines, line].join('\n').trim();
+      if (!candidate) continue;
+      try {
+        typlet.renderToString('0', { preamble: candidate, strict: 'ignore' });
+        validLines.push(line);
+      } catch (_) {
+        // skip incomplete line
+      }
+    }
+    return validLines.length > 0 ? validLines.join('\n') : undefined;
+  }
+}
+
+let effectiveTypstPreamble = computeEffectiveTypstPreamble(mathPreamble);
 
 // ─── Bridge ────────────────────────────────────────────────────────────────
 
@@ -113,12 +153,33 @@ function log(message) {
 // Cache for measured math widget heights (formula -> height in px)
 const mathHeightCache = new Map();
 
+// Render math using the configured engine ('typst' or 'latex')
+function renderMath(formula, container, isBlock) {
+  if (mathRenderer === 'typst') {
+    typlet.render(normalizeTypstMath(formula), container, {
+      displayMode: isBlock,
+      throwOnError: false,
+      strict: 'ignore',
+      preamble: effectiveTypstPreamble,
+    });
+  } else {
+    const texFormula = mathPreamble && mathPreamble.trim().startsWith('\\')
+      ? `${mathPreamble.trim()}\n${formula}`
+      : formula;
+    katex.render(texFormula, container, {
+      throwOnError: false,
+      displayMode: isBlock,
+      strict: false,
+    });
+  }
+}
+
 // Measure math height by rendering inside editor container (cached)
 // Uses editor container width for accurate measurement
 let measureContainer = null;
 
 function measureMathHeight(formula, isBlock) {
-  const cacheKey = `${isBlock ? 'block' : 'inline'}:${formula}`;
+  const cacheKey = `${mathRenderer}:${effectiveTypstPreamble || mathPreamble || ''}:${isBlock ? 'block' : 'inline'}:${formula}`;
   const cached = mathHeightCache.get(cacheKey);
   if (cached !== undefined) return cached;
 
@@ -143,11 +204,7 @@ function measureMathHeight(formula, isBlock) {
   measureContainer.appendChild(temp);
 
   try {
-    katex.render(formula, temp, {
-      throwOnError: false,
-      displayMode: isBlock,
-      strict: false,
-    });
+    renderMath(formula, temp, isBlock);
   } catch (e) {
     temp.textContent = formula;
   }
@@ -165,10 +222,17 @@ class MathWidget extends WidgetType {
     this.formula = formula;
     this.isBlock = isBlock;
     this._height = height;
+    this.renderer = mathRenderer;
+    this.preamble = effectiveTypstPreamble || mathPreamble || '';
   }
 
   eq(other) {
-    return other.formula === this.formula && other.isBlock === this.isBlock;
+    return (
+      other.formula === this.formula &&
+      other.isBlock === this.isBlock &&
+      other.renderer === this.renderer &&
+      other.preamble === this.preamble
+    );
   }
 
   get estimatedHeight() {
@@ -179,11 +243,7 @@ class MathWidget extends WidgetType {
     const wrap = document.createElement(this.isBlock ? 'div' : 'span');
     wrap.className = this.isBlock ? 'cm-math-block' : 'cm-math-inline';
     try {
-      katex.render(this.formula, wrap, {
-        throwOnError: false,
-        displayMode: this.isBlock,
-        strict: false,
-      });
+      renderMath(this.formula, wrap, this.isBlock);
     } catch (e) {
       wrap.textContent = this.formula;
       wrap.className += ' cm-math-error';
@@ -200,10 +260,17 @@ class MathOverlayWidget extends WidgetType {
     super();
     this.formula = formula;
     this._height = height;
+    this.renderer = mathRenderer;
+    this.preamble = effectiveTypstPreamble || mathPreamble || '';
   }
 
   eq(other) {
-    return other.formula === this.formula;
+    return (
+      other.formula === this.formula &&
+      other.renderer === this.renderer &&
+      other.preamble === this.preamble &&
+      other._height === this._height
+    );
   }
 
   toDOM() {
@@ -211,13 +278,9 @@ class MathOverlayWidget extends WidgetType {
     wrap.className = 'cm-math-overlay';
     wrap.style.height = this._height + 'px';
     try {
-      katex.render(this.formula, wrap, {
-        throwOnError: false,
-        displayMode: true,
-        strict: false,
-      });
+      renderMath(this.formula, wrap, true);
     } catch (e) {
-      console.warn('[KaTeX block error]', e.message, '\nFormula:', JSON.stringify(this.formula));
+      console.warn('[Math block error]', e.message, '\nFormula:', JSON.stringify(this.formula));
       wrap.textContent = this.formula;
       wrap.className += ' cm-math-error';
     }
@@ -636,6 +699,55 @@ function isInsideCode(pos, ranges) {
   return ranges.some((r) => pos >= r.from && pos < r.to);
 }
 
+function overlapsRanges(from, to, ranges) {
+  return ranges.some((r) => from < r.to && to > r.from);
+}
+
+// Find all block math ranges:
+// - $$...$$ (both Typst and LaTeX modes)
+// - Native Typst block math ($ ... $ with spaces on its own line or multiline $\n...\n$) when in Typst mode
+function findBlockMathMatches(text, codeRanges) {
+  const blocks = [];
+  let match;
+
+  const blockRe = /\$\$[\s\S]*?\$\$/g;
+  while ((match = blockRe.exec(text)) !== null) {
+    if (isInsideCode(match.index, codeRanges)) continue;
+    const mFrom = match.index;
+    const mTo = mFrom + match[0].length;
+    const formula = match[0].slice(2, -2).trim();
+    if (!formula) continue;
+    blocks.push({ from: mFrom, to: mTo, formula });
+  }
+
+  if (mathRenderer === 'typst') {
+    // Multiline Typst block math: opening $ on its own line, closing $ on its own line
+    const typstMultiRe = /^[ \t]*\$[ \t]*\r?\n([\s\S]*?)\r?\n[ \t]*\$[ \t]*$/gm;
+    while ((match = typstMultiRe.exec(text)) !== null) {
+      const mFrom = match.index;
+      const mTo = mFrom + match[0].length;
+      if (isInsideCode(mFrom, codeRanges) || overlapsRanges(mFrom, mTo, blocks)) continue;
+      const formula = match[1].trim();
+      if (!formula) continue;
+      blocks.push({ from: mFrom, to: mTo, formula });
+    }
+
+    // Single-line Typst block math on its own line: $ formula $ (spaces inside both $)
+    const typstSingleBlockRe = /^[ \t]*\$(?!\$)[ \t]+([^\$\n]+?)[ \t]+\$(?!\$)[ \t]*$/gm;
+    while ((match = typstSingleBlockRe.exec(text)) !== null) {
+      const mFrom = match.index;
+      const mTo = mFrom + match[0].length;
+      if (isInsideCode(mFrom, codeRanges) || overlapsRanges(mFrom, mTo, blocks)) continue;
+      const formula = match[1].trim();
+      if (!formula) continue;
+      blocks.push({ from: mFrom, to: mTo, formula });
+    }
+  }
+
+  blocks.sort((a, b) => a.from - b.from);
+  return blocks;
+}
+
 function buildMathDecorations(state) {
   const widgets = [];
   const text = state.doc.toString();
@@ -648,15 +760,10 @@ function buildMathDecorations(state) {
     return curFrom >= from && curTo <= to;
   }
 
-  // 1. Block math: $$...$$  (multiline ok)
+  // 1. Block math: $$...$$ (and native Typst block math in Typst mode)
   // Overlay approach with animation: always render, toggle class for cursor state
-  const blockRe = /\$\$[\s\S]*?\$\$/g;
-  while ((match = blockRe.exec(text)) !== null) {
-    if (isInsideCode(match.index, codeRanges)) continue;
-    const mFrom = match.index, mTo = mFrom + match[0].length;
-    const formula = match[0].slice(2, -2).trim();
-    if (!formula) continue;
-
+  const blockMatches = findBlockMathMatches(text, codeRanges);
+  for (const { from: mFrom, to: mTo, formula } of blockMatches) {
     const isEditing = cursorInside(mFrom, mTo);
 
     // When editing: skip ALL decorations — lines stay normal (no spacing jump)
@@ -691,12 +798,12 @@ function buildMathDecorations(state) {
     }
   }
 
-  // 2. Inline math: $...$  (single line, not $$)
+  // 2. Inline math: $...$  (single line, not $$ and not already matched as block math)
   // Use Decoration.replace() - true crossfade not possible for inline elements
   const inlineRe = /(?<!\$)\$(?!\$)([^\$\n]+?)\$(?!\$)/g;
   while ((match = inlineRe.exec(text)) !== null) {
-    if (isInsideCode(match.index, codeRanges)) continue;
     const mFrom = match.index, mTo = mFrom + match[0].length;
+    if (isInsideCode(mFrom, codeRanges) || overlapsRanges(mFrom, mTo, blockMatches)) continue;
     if (cursorInside(mFrom, mTo)) continue; // show raw source
     const formula = match[1].trim();
     if (!formula) continue;
@@ -716,8 +823,12 @@ const mathRenderField = StateField.define({
     return buildMathDecorations(state);
   },
   update(decos, tr) {
-    // Rebuild on doc change OR selection change (cursor-aware unfold)
-    if (tr.docChanged || tr.selection) {
+    // Rebuild on doc change, selection change (cursor-aware unfold), or math renderer change
+    if (
+      tr.docChanged ||
+      tr.selection ||
+      tr.effects.some((e) => e.is(setMathRendererEffect))
+    ) {
       return buildMathDecorations(tr.state);
     }
     return decos;
@@ -727,6 +838,148 @@ const mathRenderField = StateField.define({
   },
 });
 
+// ─── Live Math Preview Above Cursor (when editing inline or block math) ────
+
+function findActiveMathAtCursor(state) {
+  if (snapshotMode) return null;
+  const { from: curFrom, to: curTo, head } = state.selection.main;
+  const text = state.doc.toString();
+  const codeRanges = collectCodeRanges(state);
+
+  // 1. Check block math matches
+  const blockMatches = findBlockMathMatches(text, codeRanges);
+  for (const { from: mFrom, to: mTo, formula } of blockMatches) {
+    if (curFrom >= mFrom && curTo <= mTo) {
+      return { from: mFrom, to: mTo, head, formula, isBlock: true };
+    }
+  }
+
+  // 2. Check inline math matches
+  const inlineRe = /(?<!\$)\$(?!\$)([^\$\n]+?)\$(?!\$)/g;
+  let match;
+  while ((match = inlineRe.exec(text)) !== null) {
+    const mFrom = match.index;
+    const mTo = mFrom + match[0].length;
+    if (isInsideCode(mFrom, codeRanges) || overlapsRanges(mFrom, mTo, blockMatches)) continue;
+    if (curFrom >= mFrom && curTo <= mTo) {
+      const formula = match[1].trim();
+      if (!formula) return null;
+      return { from: mFrom, to: mTo, head, formula, isBlock: false };
+    }
+  }
+
+  return null;
+}
+
+let lastPreviewRenderKey = '';
+let previewRafId = null;
+
+function hideMathPreviewImmediate() {
+  if (previewRafId !== null) {
+    cancelAnimationFrame(previewRafId);
+    previewRafId = null;
+  }
+  const previewEl = document.getElementById('math-live-preview');
+  if (previewEl) {
+    previewEl.classList.remove('visible');
+  }
+}
+
+function updateMathPreviewNow(view) {
+  const previewEl = document.getElementById('math-live-preview');
+  const contentEl = document.getElementById('math-live-preview-content');
+  if (!previewEl || !contentEl || !view || snapshotMode) {
+    hideMathPreviewImmediate();
+    return;
+  }
+
+  const active = findActiveMathAtCursor(view.state);
+  if (!active) {
+    previewEl.classList.remove('visible');
+    return;
+  }
+
+  const renderKey = `${mathRenderer}:${effectiveTypstPreamble || mathPreamble || ''}:${active.isBlock ? 'block' : 'inline'}:${active.formula}`;
+  if (renderKey !== lastPreviewRenderKey) {
+    lastPreviewRenderKey = renderKey;
+    contentEl.innerHTML = '';
+    try {
+      renderMath(active.formula, contentEl, active.isBlock);
+    } catch (e) {
+      contentEl.textContent = active.formula;
+    }
+  }
+
+  previewEl.classList.toggle('is-block', active.isBlock);
+
+  const coords = view.coordsAtPos(active.head) || view.coordsAtPos(active.from);
+  if (!coords) {
+    previewEl.classList.remove('visible');
+    return;
+  }
+
+  previewEl.classList.add('visible');
+
+  const rect = previewEl.getBoundingClientRect();
+  const pw = rect.width || 80;
+  const ph = rect.height || 34;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const titlebarHeight = 30;
+  const gap = 8;
+
+  // Place above cursor by default; flip below if too close to top titlebar
+  let top = coords.top - ph - gap;
+  if (top < titlebarHeight) {
+    top = Math.min(vh - ph - 6, coords.bottom + gap);
+  }
+
+  // Center horizontally over the cursor, clamped within window bounds
+  let left = coords.left - pw / 2;
+  left = Math.max(8, Math.min(left, vw - pw - 8));
+
+  previewEl.style.left = `${Math.round(left)}px`;
+  previewEl.style.top = `${Math.round(top)}px`;
+}
+
+function scheduleMathPreviewUpdate(view) {
+  if (previewRafId !== null) {
+    cancelAnimationFrame(previewRafId);
+  }
+  previewRafId = requestAnimationFrame(() => {
+    previewRafId = null;
+    updateMathPreviewNow(view);
+  });
+}
+
+const mathLivePreviewPlugin = ViewPlugin.fromClass(
+  class {
+    constructor(view) {
+      this.view = view;
+      this.onScrollOrResize = () => scheduleMathPreviewUpdate(this.view);
+      view.scrollDOM.addEventListener('scroll', this.onScrollOrResize, { passive: true });
+      window.addEventListener('resize', this.onScrollOrResize, { passive: true });
+      scheduleMathPreviewUpdate(view);
+    }
+    update(update) {
+      if (
+        update.docChanged ||
+        update.selectionSet ||
+        update.viewportChanged ||
+        update.focusChanged ||
+        update.transactions.some((tr) => tr.effects.some((e) => e.is(setMathRendererEffect)))
+      ) {
+        scheduleMathPreviewUpdate(update.view);
+      }
+    }
+    destroy() {
+      this.view.scrollDOM.removeEventListener('scroll', this.onScrollOrResize);
+      window.removeEventListener('resize', this.onScrollOrResize);
+      hideMathPreviewImmediate();
+    }
+  }
+);
+
 // ─── Block math navigation ─────────────────────────────────────────────────
 // When a block math widget is rendered (cursor outside), arrow keys should
 // jump over it instead of getting stuck.
@@ -734,11 +987,10 @@ const mathRenderField = StateField.define({
 function getRenderedBlockMathRanges(state) {
   const ranges = [];
   const text = state.doc.toString();
+  const codeRanges = collectCodeRanges(state);
   const { from: curFrom, to: curTo } = state.selection.main;
-  const blockRe = /\$\$[\s\S]*?\$\$/g;
-  let match;
-  while ((match = blockRe.exec(text)) !== null) {
-    const mFrom = match.index, mTo = mFrom + match[0].length;
+  const blockMatches = findBlockMathMatches(text, codeRanges);
+  for (const { from: mFrom, to: mTo } of blockMatches) {
     // Only include ranges that are actually rendered (cursor NOT inside)
     if (!(curFrom >= mFrom && curTo <= mTo)) {
       ranges.push({ from: mFrom, to: mTo });
@@ -1035,6 +1287,9 @@ const editorTheme = EditorView.theme({
   // But keep overlay and its children visible
   '.cm-line.cm-math-source-line .cm-math-overlay, .cm-line.cm-math-source-line .cm-math-overlay *': {
     color: '#000 !important',
+  },
+  '.cm-line.cm-math-source-line .cm-math-overlay .typlet-error, .cm-line.cm-math-source-line .cm-math-overlay .katex-error': {
+    color: '#d73a49 !important',
   },
   // Editing state: show source text, hide overlay
   '.cm-line.cm-math-source-line.cm-math-editing': {
@@ -1368,6 +1623,7 @@ function initEditor(initialContent = '') {
       syntaxHighlighting(defaultHighlightStyle),  // Code block syntax colors
       markdownDecoPlugin,
       mathRenderField,
+      mathLivePreviewPlugin,
       search({ top: true }),
       highlightSelectionMatches(),
       editorTheme,
@@ -1436,6 +1692,38 @@ function initEditor(initialContent = '') {
 }
 
 // ─── Swift bridge interface ────────────────────────────────────────────────
+
+window.setMathRenderer = function (renderer) {
+  const normalized = (renderer || '').toLowerCase() === 'latex' ? 'latex' : 'typst';
+  mathRenderer = normalized;
+  mathHeightCache.clear();
+  log('Math renderer set to: ' + mathRenderer);
+  if (editorView) {
+    editorView.dispatch({
+      effects: setMathRendererEffect.of(mathRenderer),
+    });
+  }
+};
+
+window.getMathRenderer = function () {
+  return mathRenderer;
+};
+
+window.setMathPreamble = function (preamble) {
+  mathPreamble = typeof preamble === 'string' ? preamble : '';
+  effectiveTypstPreamble = computeEffectiveTypstPreamble(mathPreamble);
+  mathHeightCache.clear();
+  log('Math preamble updated');
+  if (editorView) {
+    editorView.dispatch({
+      effects: setMathRendererEffect.of(mathRenderer),
+    });
+  }
+};
+
+window.getMathPreamble = function () {
+  return mathPreamble;
+};
 
 window.setContent = function (content) {
   if (!editorView) return;
@@ -1577,6 +1865,7 @@ window.focusEditor = function () {
 window.prepareForSnapshot = function () {
   if (!editorView) return;
   snapshotMode = true;
+  hideMathPreviewImmediate();
   editorView.dom.classList.add('cm-snapshot-mode');
   editorView.dispatch({
     selection: EditorSelection.single(0, 0),
@@ -1591,6 +1880,7 @@ window.setContentForSnapshot = function (content) {
   clearTimeout(debounceTimer);
   suppressContentChange = true;
   snapshotMode = true;
+  hideMathPreviewImmediate();
   editorView.dom.classList.add('cm-snapshot-mode');
   editorView.dispatch(
     editorView.state.update({

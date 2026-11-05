@@ -181,7 +181,7 @@ This is a **markdown-enabled** sticky note.
 
 ## Features
 - Live markdown preview
-- Math equations: $E = mc^2$
+- Math equations: $E = m c^2$
 - Code blocks
 - And more!
 

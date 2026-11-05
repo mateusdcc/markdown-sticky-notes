@@ -8,6 +8,8 @@ class AppCoordinator: ObservableObject {
 
     @Published var noteManager: NoteManager
     @Published var windowManager: WindowManager
+    @Published var mathRenderer: MathRenderer
+    @Published var mathPreamble: String
 
     // MARK: - Properties
 
@@ -18,16 +20,24 @@ class AppCoordinator: ObservableObject {
 
     private let persistenceManager: PersistenceManager
     private var cancellables = Set<AnyCancellable>()
+    private var settingsWindow: NSWindow?
 
     // MARK: - Initialization
 
     init() {
-        self.persistenceManager = PersistenceManager()
-        self.noteManager = NoteManager(persistenceManager: persistenceManager)
+        let pm = PersistenceManager()
+        self.persistenceManager = pm
+        self.noteManager = NoteManager(persistenceManager: pm)
         self.windowManager = WindowManager()
+        let initialRenderer = pm.loadMathRenderer()
+        let initialPreamble = pm.loadMathPreamble()
+        self.mathRenderer = initialRenderer
+        self.mathPreamble = initialPreamble
 
         // Wire up SharedWebViewManager
         SharedWebViewManager.shared.coordinator = self
+        SharedWebViewManager.shared.setMathRenderer(initialRenderer)
+        SharedWebViewManager.shared.setMathPreamble(initialPreamble)
 
         setupBindings()
         openInitialWindows()
@@ -99,6 +109,42 @@ class AppCoordinator: ObservableObject {
     func setNoteAlwaysOnTop(noteId: UUID, alwaysOnTop: Bool) {
         noteManager.updateNoteAlwaysOnTop(noteId, alwaysOnTop: alwaysOnTop)
         windowManager.getWindowController(for: noteId)?.setAlwaysOnTop(alwaysOnTop)
+    }
+
+    /// Change the math rendering engine (Typst or LaTeX)
+    func setMathRenderer(_ renderer: MathRenderer) {
+        guard mathRenderer != renderer else { return }
+        mathRenderer = renderer
+        persistenceManager.saveMathRenderer(renderer)
+        SharedWebViewManager.shared.setMathRenderer(renderer)
+    }
+
+    /// Update the custom math preamble / overhead
+    func setMathPreamble(_ preamble: String) {
+        guard mathPreamble != preamble else { return }
+        mathPreamble = preamble
+        persistenceManager.saveMathPreamble(preamble)
+        SharedWebViewManager.shared.setMathPreamble(preamble)
+    }
+
+    /// Open and focus the Settings window above floating note panels
+    func openSettings() {
+        if let window = settingsWindow {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        let hostingController = NSHostingController(rootView: SettingsView(coordinator: self))
+        let window = NSWindow(contentViewController: hostingController)
+        window.title = "MD Sticky Notes Settings"
+        window.styleMask = [.titled, .closable, .miniaturizable]
+        window.level = .floating
+        window.isReleasedWhenClosed = false
+        window.center()
+        self.settingsWindow = window
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     /// Get the note ID of the currently focused window

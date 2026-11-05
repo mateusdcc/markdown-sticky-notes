@@ -37,7 +37,8 @@
     "@codemirror/view": "^6.39.12",
     "katex": "^0.16.28",
     "markdown-it": "^14.1.0",
-    "markdown-it-mark": "^4.0.0"
+    "markdown-it-mark": "^4.0.0",
+    "typlet": "^0.2.0"
   },
   "devDependencies": {
     "@babel/core": "^7.29.0",

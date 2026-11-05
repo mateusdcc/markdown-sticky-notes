@@ -24,12 +24,12 @@
             background: transparent;
         }
 
-        /* KaTeX custom styling */
-        .katex {
+        /* KaTeX & Typlet custom styling */
+        .katex, .typlet {
             font-size: 1.1em;
         }
 
-        .katex-display {
+        .katex-display, .typlet-display {
             margin: 1em 0;
         }
 
@@ -56,11 +56,52 @@
             cursor: default !important;
             /* Only covers traffic lights, rest of titlebar allows text clicks when scrolled */
         }
+
+        /* Floating live math preview above cursor while editing inline/block math */
+        #math-live-preview {
+            position: fixed;
+            z-index: 9999;
+            pointer-events: none;
+            background: rgba(255, 255, 255, 0.94);
+            -webkit-backdrop-filter: blur(10px);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 0, 0, 0.13);
+            border-radius: 8px;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14), 0 1px 4px rgba(0, 0, 0, 0.08);
+            padding: 6px 12px;
+            max-width: calc(100vw - 16px);
+            overflow-x: auto;
+            color: #1a1a1a;
+            opacity: 0;
+            transform: translateY(3px) scale(0.98);
+            transition: opacity 0.1s ease-out, transform 0.1s ease-out;
+            visibility: hidden;
+        }
+
+        #math-live-preview.visible {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+            visibility: visible;
+        }
+
+        #math-live-preview.is-block {
+            padding: 8px 14px;
+        }
+
+        #math-live-preview .katex-display,
+        #math-live-preview .typlet-display {
+            margin: 2px 0;
+        }
+
+        body:has(.cm-snapshot-mode) #math-live-preview {
+            display: none !important;
+        }
     </style>
 </head>
 <body>
     <div id="cursor-overlay"></div>
     <div id="titlebar-mask"></div>
+    <div id="math-live-preview"><div id="math-live-preview-content"></div></div>
     <div id="editor-container"></div>
     <script src="editor.bundle.js"></script>
 </body>

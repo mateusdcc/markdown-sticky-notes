@@ -56,9 +56,17 @@ struct MenuBarCommands: Scene {
 
     var body: some Scene {
         Settings {
-            EmptyView()
+            SettingsView(coordinator: coordinator)
         }
         .commands {
+            // App menu — Settings (Cmd+,) opens floating Settings window above sticky notes
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings...") {
+                    coordinator.openSettings()
+                }
+                .keyboardShortcut(",", modifiers: .command)
+            }
+
             // File menu
             CommandGroup(replacing: .newItem) {
                 Button("New Note") {
@@ -128,6 +136,21 @@ struct MenuBarCommands: Scene {
                     }
                 }
                 .keyboardShortcut("p", modifiers: [.command, .shift])
+
+                Divider()
+
+                Picker("Math Renderer", selection: Binding(
+                    get: { coordinator.mathRenderer },
+                    set: { coordinator.setMathRenderer($0) }
+                )) {
+                    ForEach(MathRenderer.allCases, id: \.self) { renderer in
+                        Text(renderer.displayName).tag(renderer)
+                    }
+                }
+
+                Button("Math & Overhead Settings...") {
+                    coordinator.openSettings()
+                }
             }
         }
     }
@@ -140,5 +163,78 @@ struct MenuBarCommands: Scene {
 
     init(coordinator: AppCoordinator) {
         self.coordinator = coordinator
+    }
+}
+
+// MARK: - Settings View
+
+struct SettingsView: View {
+    @ObservedObject var coordinator: AppCoordinator
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 12) {
+                Text("Math Renderer:")
+                    .fontWeight(.medium)
+                    .frame(width: 130, alignment: .trailing)
+
+                Picker("", selection: Binding(
+                    get: { coordinator.mathRenderer },
+                    set: { coordinator.setMathRenderer($0) }
+                )) {
+                    ForEach(MathRenderer.allCases, id: \.self) { renderer in
+                        Text(renderer.displayName).tag(renderer)
+                    }
+                }
+                .pickerStyle(.radioGroup)
+                .labelsHidden()
+            }
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("Custom Overhead (Preamble):")
+                        .fontWeight(.medium)
+                    Spacer()
+                    Button("Reset Default") {
+                        coordinator.setMathPreamble(PersistenceManager.defaultMathPreamble)
+                    }
+                    .controlSize(.small)
+                }
+
+                Text("Typst definitions (#let, #set, #show) prepended to every math equation:")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                TextEditor(text: Binding(
+                    get: { coordinator.mathPreamble },
+                    set: { coordinator.setMathPreamble($0) }
+                ))
+                .font(.system(size: 12.5, design: .monospaced))
+                .frame(minHeight: 110)
+                .padding(4)
+                .background(Color(NSColor.textBackgroundColor))
+                .cornerRadius(6)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Color.secondary.opacity(0.25), lineWidth: 1)
+                )
+
+                Text("Example: #let inner(x, y) = $lr(angle.l #x, #y angle.r)$  →  use $inner(a, b)$ in notes")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .textSelection(.enabled)
+            }
+
+            Divider()
+
+            Text("Config file: \(PersistenceManager.configFileURL.path)")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+                .textSelection(.enabled)
+        }
+        .padding(20)
+        .frame(width: 480)
     }
 }

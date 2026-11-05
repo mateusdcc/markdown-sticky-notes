@@ -7,6 +7,9 @@ class PersistenceManager: ObservableObject {
 
     private let userDefaults: UserDefaults
     private let notesKey = "sticky_notes"
+    private let mathRendererKey = "mathRenderer"
+    private let mathPreambleKey = "mathPreamble"
+    static let defaultMathPreamble = "#let inner(x, y) = $lr(angle.l #x, #y angle.r)$"
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
@@ -98,6 +101,112 @@ class PersistenceManager: ObservableObject {
     func clearAllNotes() {
         userDefaults.removeObject(forKey: notesKey)
         print("[PersistenceManager] Cleared all notes")
+    }
+
+    // MARK: - App Configuration (Math Renderer)
+
+    /// Primary config file URL (~/.config/md-sticky-notes/config.json)
+    static var configFileURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/md-sticky-notes/config.json")
+    }
+
+    /// Alternate config file URL (~/.config/markdown-sticky-notes/config.json)
+    private static var alternateConfigFileURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/markdown-sticky-notes/config.json")
+    }
+
+    /// Load the configured math renderer from config file or UserDefaults (defaults to .typst)
+    func loadMathRenderer() -> MathRenderer {
+        for url in [Self.configFileURL, Self.alternateConfigFileURL] {
+            if let data = try? Data(contentsOf: url),
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let raw = (json["mathRenderer"] as? String) ?? (json["math_renderer"] as? String) {
+                let renderer = MathRenderer.from(raw)
+                userDefaults.set(renderer.rawValue, forKey: mathRendererKey)
+                print("[PersistenceManager] Loaded mathRenderer '\(renderer.rawValue)' from \(url.path)")
+                return renderer
+            }
+        }
+
+        if let saved = userDefaults.string(forKey: mathRendererKey) {
+            let renderer = MathRenderer.from(saved)
+            saveMathRenderer(renderer)
+            return renderer
+        }
+
+        let defaultRenderer: MathRenderer = .typst
+        saveMathRenderer(defaultRenderer)
+        return defaultRenderer
+    }
+
+    /// Save the math renderer setting to both UserDefaults and ~/.config/md-sticky-notes/config.json
+    func saveMathRenderer(_ renderer: MathRenderer) {
+        userDefaults.set(renderer.rawValue, forKey: mathRendererKey)
+
+        let url = Self.configFileURL
+        let dir = url.deletingLastPathComponent()
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            var configObj: [String: Any] = [:]
+            if let existingData = try? Data(contentsOf: url),
+               let existing = try? JSONSerialization.jsonObject(with: existingData) as? [String: Any] {
+                configObj = existing
+            }
+            configObj["mathRenderer"] = renderer.rawValue
+            let data = try JSONSerialization.data(withJSONObject: configObj, options: [.prettyPrinted, .sortedKeys])
+            try data.write(to: url, options: .atomic)
+            print("[PersistenceManager] Saved mathRenderer '\(renderer.rawValue)' to \(url.path)")
+        } catch {
+            print("[PersistenceManager] Error saving config file: \(error)")
+        }
+    }
+
+    /// Load the custom math preamble/overhead from config file or UserDefaults
+    func loadMathPreamble() -> String {
+        for url in [Self.configFileURL, Self.alternateConfigFileURL] {
+            if let data = try? Data(contentsOf: url),
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let raw = (json["mathPreamble"] as? String)
+                   ?? (json["customOverhead"] as? String)
+                   ?? (json["preamble"] as? String) {
+                userDefaults.set(raw, forKey: mathPreambleKey)
+                print("[PersistenceManager] Loaded mathPreamble from \(url.path)")
+                return raw
+            }
+        }
+
+        if let saved = userDefaults.string(forKey: mathPreambleKey) {
+            saveMathPreamble(saved)
+            return saved
+        }
+
+        let defaultPreamble = Self.defaultMathPreamble
+        saveMathPreamble(defaultPreamble)
+        return defaultPreamble
+    }
+
+    /// Save the custom math preamble/overhead to both UserDefaults and ~/.config/md-sticky-notes/config.json
+    func saveMathPreamble(_ preamble: String) {
+        userDefaults.set(preamble, forKey: mathPreambleKey)
+
+        let url = Self.configFileURL
+        let dir = url.deletingLastPathComponent()
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            var configObj: [String: Any] = [:]
+            if let existingData = try? Data(contentsOf: url),
+               let existing = try? JSONSerialization.jsonObject(with: existingData) as? [String: Any] {
+                configObj = existing
+            }
+            configObj["mathPreamble"] = preamble
+            let data = try JSONSerialization.data(withJSONObject: configObj, options: [.prettyPrinted, .sortedKeys])
+            try data.write(to: url, options: .atomic)
+            print("[PersistenceManager] Saved mathPreamble to \(url.path)")
+        } catch {
+            print("[PersistenceManager] Error saving mathPreamble to config file: \(error)")
+        }
     }
 
     // MARK: - Private Methods

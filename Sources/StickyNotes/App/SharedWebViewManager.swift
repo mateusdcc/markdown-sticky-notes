@@ -23,6 +23,12 @@ class SharedWebViewManager {
     /// Whether the editor JS has finished loading
     private(set) var isReady = false
 
+    /// Current math rendering engine ('typst' or 'latex')
+    private(set) var mathRenderer: MathRenderer = .typst
+
+    /// Custom math preamble / overhead (e.g. Typst #let definitions)
+    private(set) var mathPreamble: String = PersistenceManager.defaultMathPreamble
+
     /// Coordinator reference for bridge callbacks
     weak var coordinator: AppCoordinator?
 
@@ -102,6 +108,10 @@ class SharedWebViewManager {
         isReady = true
         print("[SharedWebViewManager] Editor is ready")
 
+        // Ensure math renderer and custom preamble are configured before any pre-rendering or active note loading
+        webView.evaluateJavaScript("window.setMathRenderer('\(mathRenderer.rawValue)')")
+        pushMathPreambleToJS()
+
         // Pre-render inactive notes while WebView is still hidden (alpha=0)
         preRenderInactiveNotes { [weak self] in
             guard let self = self else { return }
@@ -120,6 +130,32 @@ class SharedWebViewManager {
                 wc.revealWebView()
             }
         }
+    }
+
+    /// Update the math rendering engine in the JS editor
+    func setMathRenderer(_ renderer: MathRenderer) {
+        mathRenderer = renderer
+        guard isReady else { return }
+        webView.evaluateJavaScript("window.setMathRenderer('\(renderer.rawValue)')")
+        print("[SharedWebViewManager] Updated math renderer to: \(renderer.rawValue)")
+    }
+
+    /// Update the custom math preamble / overhead in the JS editor
+    func setMathPreamble(_ preamble: String) {
+        mathPreamble = preamble
+        guard isReady else { return }
+        pushMathPreambleToJS()
+        print("[SharedWebViewManager] Updated math preamble")
+    }
+
+    private func pushMathPreambleToJS() {
+        webView.callAsyncJavaScript(
+            "window.setMathPreamble(preamble)",
+            arguments: ["preamble": mathPreamble],
+            in: nil,
+            in: .page,
+            completionHandler: nil
+        )
     }
 
     // MARK: - Pre-rendering
