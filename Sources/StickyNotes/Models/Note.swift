@@ -21,6 +21,9 @@ struct Note: Identifiable, Codable, Equatable {
     /// Window opacity (0.0 to 1.0)
     var opacity: Double
 
+    /// Per-note unfocused opacity; nil uses the app setting.
+    var unfocusedOpacity: Double?
+
     /// Color theme name (yellow, pink, blue, green, purple, orange)
     var colorTheme: String
 
@@ -47,6 +50,7 @@ struct Note: Identifiable, Codable, Equatable {
         size: CGSize = CGSize(width: 300, height: 360),
         isMinimized: Bool = false,
         opacity: Double = 0.95,
+        unfocusedOpacity: Double? = nil,
         colorTheme: String = "yellow",
         cursorPosition: Int = 0,
         scrollTop: Double = 0,
@@ -60,6 +64,7 @@ struct Note: Identifiable, Codable, Equatable {
         self.size = size
         self.isMinimized = isMinimized
         self.opacity = opacity
+        self.unfocusedOpacity = unfocusedOpacity
         self.colorTheme = colorTheme
         self.cursorPosition = cursorPosition
         self.scrollTop = scrollTop
@@ -77,7 +82,7 @@ struct Note: Identifiable, Codable, Equatable {
 // MARK: - Codable Conformance
 extension Note {
     enum CodingKeys: String, CodingKey {
-        case id, content, position, size, isMinimized, opacity, colorTheme, cursorPosition, scrollTop, alwaysOnTop, createdAt, modifiedAt
+        case id, content, position, size, isMinimized, opacity, unfocusedOpacity, colorTheme, cursorPosition, scrollTop, alwaysOnTop, createdAt, modifiedAt
     }
 
     init(from decoder: Decoder) throws {
@@ -95,6 +100,7 @@ extension Note {
 
         isMinimized = try container.decode(Bool.self, forKey: .isMinimized)
         opacity = try container.decode(Double.self, forKey: .opacity)
+        unfocusedOpacity = try container.decodeIfPresent(Double.self, forKey: .unfocusedOpacity)
         colorTheme = try container.decodeIfPresent(String.self, forKey: .colorTheme) ?? "yellow"
         cursorPosition = try container.decodeIfPresent(Int.self, forKey: .cursorPosition) ?? 0
         scrollTop = try container.decodeIfPresent(Double.self, forKey: .scrollTop) ?? 0
@@ -118,6 +124,7 @@ extension Note {
 
         try container.encode(isMinimized, forKey: .isMinimized)
         try container.encode(opacity, forKey: .opacity)
+        try container.encodeIfPresent(unfocusedOpacity, forKey: .unfocusedOpacity)
         try container.encode(colorTheme, forKey: .colorTheme)
         try container.encode(cursorPosition, forKey: .cursorPosition)
         try container.encode(scrollTop, forKey: .scrollTop)

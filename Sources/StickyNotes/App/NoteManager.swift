@@ -96,6 +96,7 @@ class NoteManager: ObservableObject {
         position: CGPoint? = nil,
         size: CGSize? = nil,
         opacity: Double? = nil,
+        unfocusedOpacity: Double? = nil,
         isMinimized: Bool? = nil
     ) {
         guard let index = notes.firstIndex(where: { $0.id == noteId }) else {
@@ -110,6 +111,9 @@ class NoteManager: ObservableObject {
         }
         if let opacity = opacity {
             notes[index].opacity = opacity
+        }
+        if let unfocusedOpacity = unfocusedOpacity {
+            notes[index].unfocusedOpacity = unfocusedOpacity
         }
         if let isMinimized = isMinimized {
             notes[index].isMinimized = isMinimized

@@ -89,7 +89,9 @@ class AppCoordinator: ObservableObject {
     func setUnfocusedOpacity(_ opacity: Double) {
         unfocusedOpacity = min(1, max(0.2, opacity))
         persistenceManager.saveOpacity(unfocusedOpacity, forKey: "unfocusedOpacity")
-        refreshNoteInteraction()
+        for note in noteManager.notes {
+            setNoteUnfocusedOpacity(noteId: note.id, opacity: unfocusedOpacity)
+        }
     }
 
     // MARK: - Public Methods
@@ -154,6 +156,11 @@ class AppCoordinator: ObservableObject {
     func setNoteOpacity(noteId: UUID, opacity: Double) {
         noteManager.updateNoteWindow(noteId, opacity: opacity)
         windowManager.getWindowController(for: noteId)?.setOpacity(opacity)
+    }
+
+    func setNoteUnfocusedOpacity(noteId: UUID, opacity: Double) {
+        noteManager.updateNoteWindow(noteId, unfocusedOpacity: opacity)
+        windowManager.getWindowController(for: noteId)?.setUnfocusedOpacity(opacity)
     }
 
     /// Toggle a note's always-on-top setting

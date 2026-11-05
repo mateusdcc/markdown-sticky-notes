@@ -13,6 +13,7 @@ class NoteWindowController: NSWindowController, NSWindowDelegate {
     private var pinButton: NSButton?
     private var colorButtons: [NoteColor: NSButton] = [:]
     private var opacitySlider: NSSlider?
+    private var unfocusedOpacitySlider: NSSlider?
 
     /// The main content container that holds either WKWebView or text preview/snapshot
     private var contentContainer: NSView!
@@ -89,21 +90,37 @@ class NoteWindowController: NSWindowController, NSWindowDelegate {
             panel.removeTitlebarAccessoryViewController(at: 0)
         }
 
-        let container = TitlebarControlsView(frame: NSRect(x: 0, y: 0, width: 190, height: 22))
+        let container = TitlebarControlsView(frame: NSRect(x: 0, y: 0, width: 196, height: 22))
         var xOffset: CGFloat = 4
 
-        // Opacity slider
-        let slider = NSSlider(frame: NSRect(x: xOffset, y: 4, width: 50, height: 14))
-        slider.minValue = 0.2
-        slider.maxValue = 1.0
-        slider.doubleValue = note.opacity
-        slider.target = self
-        slider.action = #selector(opacityChanged(_:))
-        slider.controlSize = .mini
-        slider.toolTip = "Focused opacity (this note)"
-        opacitySlider = slider
-        container.addSubview(slider)
-        xOffset += 58
+        // Native rotary controls: focused (sun) and unfocused (moon).
+        for (index, symbol) in ["sun.max.fill", "moon.fill"].enumerated() {
+            let label = index == 0 ? "Focused opacity" : "Unfocused opacity"
+            let icon = NSImageView(frame: NSRect(x: xOffset, y: 6, width: 9, height: 10))
+            icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
+            icon.contentTintColor = .darkGray
+            container.addSubview(icon)
+
+            let slider = NSSlider(frame: NSRect(x: xOffset + 10, y: 1, width: 20, height: 20))
+            slider.appearance = NSAppearance(named: .aqua)
+            slider.wantsLayer = true
+            slider.layer?.cornerRadius = 10
+            slider.layer?.borderWidth = 1
+            slider.layer?.borderColor = NSColor.black.withAlphaComponent(0.18).cgColor
+            slider.sliderType = .circular
+            slider.controlSize = .small
+            slider.minValue = 0.2
+            slider.maxValue = 1.0
+            slider.isContinuous = true
+            slider.doubleValue = index == 0 ? note.opacity : effectiveUnfocusedOpacity
+            slider.target = self
+            slider.action = index == 0 ? #selector(opacityChanged(_:)) : #selector(unfocusedOpacityChanged(_:))
+            slider.setAccessibilityLabel(label)
+            slider.toolTip = "\(label): \(Int((slider.doubleValue * 100).rounded()))% (this note)"
+            if index == 0 { opacitySlider = slider } else { unfocusedOpacitySlider = slider }
+            container.addSubview(slider)
+            xOffset += 32
+        }
 
         // Pin button
         let pin = NSButton(frame: NSRect(x: xOffset, y: 2, width: 18, height: 18))
@@ -171,10 +188,13 @@ class NoteWindowController: NSWindowController, NSWindowDelegate {
     }
 
     @objc private func opacityChanged(_ sender: NSSlider) {
-        let opacity = sender.doubleValue
-        note.opacity = opacity
-        refreshInteraction()
-        coordinator?.setNoteOpacity(noteId: note.id, opacity: opacity)
+        setOpacity(sender.doubleValue)
+        coordinator?.setNoteOpacity(noteId: note.id, opacity: sender.doubleValue)
+    }
+
+    @objc private func unfocusedOpacityChanged(_ sender: NSSlider) {
+        setUnfocusedOpacity(sender.doubleValue)
+        coordinator?.setNoteUnfocusedOpacity(noteId: note.id, opacity: sender.doubleValue)
     }
 
     @objc private func toggleAlwaysOnTop() {
@@ -447,6 +467,18 @@ class NoteWindowController: NSWindowController, NSWindowDelegate {
     func setOpacity(_ opacity: Double) {
         note.opacity = opacity
         opacitySlider?.doubleValue = opacity
+        opacitySlider?.toolTip = "Focused opacity: \(Int((opacity * 100).rounded()))% (this note)"
+        refreshInteraction()
+    }
+
+    private var effectiveUnfocusedOpacity: Double {
+        note.unfocusedOpacity ?? coordinator?.unfocusedOpacity ?? note.opacity
+    }
+
+    func setUnfocusedOpacity(_ opacity: Double) {
+        note.unfocusedOpacity = opacity
+        unfocusedOpacitySlider?.doubleValue = opacity
+        unfocusedOpacitySlider?.toolTip = "Unfocused opacity: \(Int((opacity * 100).rounded()))% (this note)"
         refreshInteraction()
     }
 
@@ -457,7 +489,7 @@ class NoteWindowController: NSWindowController, NSWindowDelegate {
         if window.ignoresMouseEvents != ignoresMouse {
             window.ignoresMouseEvents = ignoresMouse
         }
-        let opacity = CGFloat(focused ? note.opacity : (coordinator?.unfocusedOpacity ?? note.opacity))
+        let opacity = CGFloat(focused ? note.opacity : effectiveUnfocusedOpacity)
         if window.alphaValue != opacity { window.alphaValue = opacity }
     }
 
