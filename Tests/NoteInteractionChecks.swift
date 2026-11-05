@@ -17,6 +17,8 @@ struct NoteInteractionTests {
         _ = NSApplication.shared
         let controller = NoteWindowController(note: Note(opacity: 0.9, alwaysOnTop: true), coordinator: nil)
         let window = controller.window!
+        assert(window.styleMask.contains(.nonactivatingPanel))
+        assert(window.collectionBehavior.contains(.canJoinAllSpaces))
 
         controller.refreshInteraction(optionHeld: false)
         assert(window.ignoresMouseEvents)
@@ -30,14 +32,17 @@ struct NoteInteractionTests {
         controller.setOpacity(0.7)
         assert(abs(window.alphaValue - 0.7) < 0.001)
 
-        // A key panel must still pass clicks through when its app is inactive.
+        // A nonactivating panel can accept typing while its app stays inactive.
         controller.setAlwaysOnTop(true)
-        window.becomeKey()
+        assert(window.styleMask.contains(.nonactivatingPanel))
+        assert(window.collectionBehavior.contains(.canJoinAllSpaces))
+        let frontmostPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        controller.focus()
         controller.refreshInteraction(optionHeld: false)
-        assert(window.ignoresMouseEvents == !NSApp.isActive)
-        if NSApp.isActive {
-            assert(abs(window.alphaValue - 0.7) < 0.001)
-        }
+        assert(window.isKeyWindow)
+        assert(!window.ignoresMouseEvents)
+        assert(abs(window.alphaValue - 0.7) < 0.001)
+        assert(NSWorkspace.shared.frontmostApplication?.processIdentifier == frontmostPID)
         window.resignKey()
         controller.refreshInteraction(optionHeld: false)
         assert(window.ignoresMouseEvents)

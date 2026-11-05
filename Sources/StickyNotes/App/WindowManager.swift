@@ -80,7 +80,7 @@ class WindowManager: ObservableObject {
             return
         }
 
-        windowController.window?.makeKeyAndOrderFront(nil)
+        windowController.focus()
     }
 
     /// Get count of open windows

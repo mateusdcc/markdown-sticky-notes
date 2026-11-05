@@ -54,11 +54,9 @@ class AppCoordinator: ObservableObject {
         RunLoop.main.add(timer, forMode: .common)
         interactionTimer = timer
         optionClickMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
-            if event.modifierFlags.contains(.option), let window = event.window,
-               let id = self?.windowManager.noteId(for: window),
-               self?.noteManager.getNote(id)?.alwaysOnTop == true {
-                NSApp.activate(ignoringOtherApps: true)
-                window.makeKeyAndOrderFront(nil)
+            if let window = event.window,
+               let id = self?.windowManager.noteId(for: window) {
+                self?.windowManager.getWindowController(for: id)?.focus()
             }
             return event
         }

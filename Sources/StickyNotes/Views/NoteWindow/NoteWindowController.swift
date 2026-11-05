@@ -35,7 +35,7 @@ class NoteWindowController: NSWindowController, NSWindowDelegate {
                 origin: note.position,
                 size: note.size
             ),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable, .utilityWindow, .fullSizeContentView],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .utilityWindow, .fullSizeContentView, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
@@ -55,6 +55,9 @@ class NoteWindowController: NSWindowController, NSWindowDelegate {
     // MARK: - Setup Methods
 
     private func setupPanel(_ panel: NSPanel) {
+        // Keep this style for the panel's lifetime; pinning changes frequently.
+        // Pinned notes take keyboard focus without activating the app's other Spaces.
+        panel.becomesKeyOnlyIfNeeded = false
         panel.hidesOnDeactivate = false
         if note.alwaysOnTop {
             panel.level = .popUpMenu
@@ -430,6 +433,17 @@ class NoteWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: - Public Methods
 
+    func focus() {
+        guard let window = window else { return }
+        if note.alwaysOnTop {
+            window.orderFrontRegardless()
+            window.makeKey()
+        } else {
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+        }
+    }
+
     func setOpacity(_ opacity: Double) {
         note.opacity = opacity
         opacitySlider?.doubleValue = opacity
@@ -438,7 +452,7 @@ class NoteWindowController: NSWindowController, NSWindowDelegate {
 
     func refreshInteraction(optionHeld: Bool = NSEvent.modifierFlags.contains(.option)) {
         guard let window = window else { return }
-        let focused = window.isKeyWindow && NSApp.isActive
+        let focused = window.isKeyWindow
         let ignoresMouse = note.alwaysOnTop && !focused && !optionHeld
         if window.ignoresMouseEvents != ignoresMouse {
             window.ignoresMouseEvents = ignoresMouse
