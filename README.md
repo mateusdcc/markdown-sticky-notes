@@ -17,7 +17,8 @@ A native macOS sticky note app with Obsidian-style markdown live preview, built 
 - **Floating Windows**: Always visible while you work
 - **Pin on Top**: Keep important notes above all windows (Cmd+Shift+P)
 - **Multiple Colors**: Yellow, pink, blue, green, purple, orange
-- **Adjustable Opacity**: Transparency slider for each note
+- **Click-Through Pinned Notes**: Unfocused pinned notes pass clicks to the app underneath. Hold Option (⌥) and click a note to focus and edit it.
+- **Adjustable Opacity**: Separate focused and unfocused opacity in Settings (Cmd+,). The titlebar slider overrides focused opacity for an individual note.
 - **Auto-Save**: Never lose your notes
 
 ### Keyboard Shortcuts
@@ -91,6 +92,8 @@ https://github.com/user-attachments/assets/c3dce235-9c50-4cee-832d-267e0e5f8024
 - CodeMirror 6 is the most advanced web editor available
 
 ## Development
+
+Run `./test-interaction.sh` to check click-through, focus, pinning, and opacity persistence using the macOS command-line Swift tools.
 
 ```bash
 # Full rebuild (Swift + JS)

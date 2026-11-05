@@ -148,7 +148,7 @@ struct MenuBarCommands: Scene {
                     }
                 }
 
-                Button("Math & Overhead Settings...") {
+                Button("Note & Math Settings...") {
                     coordinator.openSettings()
                 }
             }
@@ -173,6 +173,32 @@ struct SettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
+            Text("Note Opacity").font(.headline)
+            HStack {
+                Text("Focused").frame(width: 90, alignment: .leading)
+                Slider(value: Binding(
+                    get: { coordinator.focusedOpacity },
+                    set: { coordinator.setFocusedOpacity($0) }
+                ), in: 0.2...1.0)
+                Text(coordinator.focusedOpacity, format: .percent.precision(.fractionLength(0)))
+                    .monospacedDigit().frame(width: 44, alignment: .trailing)
+            }
+            HStack {
+                Text("Unfocused").frame(width: 90, alignment: .leading)
+                Slider(value: Binding(
+                    get: { coordinator.unfocusedOpacity },
+                    set: { coordinator.setUnfocusedOpacity($0) }
+                ), in: 0.2...1.0)
+                Text(coordinator.unfocusedOpacity, format: .percent.precision(.fractionLength(0)))
+                    .monospacedDigit().frame(width: 44, alignment: .trailing)
+            }
+            Text("Focused opacity applies to all notes. Use a note’s titlebar slider to adjust it individually.")
+                .font(.caption).foregroundColor(.secondary)
+            Text("Unfocused pinned notes let clicks pass through. Hold Option (⌥) and click a note to focus and edit it.")
+                .font(.caption).foregroundColor(.secondary)
+
+            Divider()
+
             HStack(alignment: .top, spacing: 12) {
                 Text("Math Renderer:")
                     .fontWeight(.medium)

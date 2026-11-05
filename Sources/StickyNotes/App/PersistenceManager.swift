@@ -103,6 +103,16 @@ class PersistenceManager: ObservableObject {
         print("[PersistenceManager] Cleared all notes")
     }
 
+    func loadOpacity(_ key: String, default defaultValue: Double) -> Double {
+        guard let value = userDefaults.object(forKey: key) as? Double,
+              value.isFinite else { return defaultValue }
+        return min(1, max(0.2, value))
+    }
+
+    func saveOpacity(_ value: Double, forKey key: String) {
+        userDefaults.set(min(1, max(0.2, value)), forKey: key)
+    }
+
     // MARK: - App Configuration (Math Renderer)
 
     /// Primary config file URL (~/.config/md-sticky-notes/config.json)

@@ -25,7 +25,7 @@ class NoteWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: - Initialization
 
-    init(note: Note, coordinator: AppCoordinator) {
+    init(note: Note, coordinator: AppCoordinator?) {
         self.note = note
         self.coordinator = coordinator
 
@@ -45,6 +45,7 @@ class NoteWindowController: NSWindowController, NSWindowDelegate {
         setupPanel(panel)
         setupTitlebarAccessory(panel)
         setupContent()
+        refreshInteraction()
     }
 
     required init?(coder: NSCoder) {
@@ -96,7 +97,7 @@ class NoteWindowController: NSWindowController, NSWindowDelegate {
         slider.target = self
         slider.action = #selector(opacityChanged(_:))
         slider.controlSize = .mini
-        slider.toolTip = "Opacity"
+        slider.toolTip = "Focused opacity (this note)"
         opacitySlider = slider
         container.addSubview(slider)
         xOffset += 58
@@ -169,7 +170,7 @@ class NoteWindowController: NSWindowController, NSWindowDelegate {
     @objc private func opacityChanged(_ sender: NSSlider) {
         let opacity = sender.doubleValue
         note.opacity = opacity
-        window?.alphaValue = CGFloat(opacity)
+        refreshInteraction()
         coordinator?.setNoteOpacity(noteId: note.id, opacity: opacity)
     }
 
@@ -213,6 +214,7 @@ class NoteWindowController: NSWindowController, NSWindowDelegate {
     /// Uses synchronous RunLoop-spin snapshot to avoid async timing gaps.
     func attachWebView() {
         guard !hasWebView else { return }
+        guard let currentNote = coordinator?.noteManager.getNote(note.id) else { return }
 
         let manager = SharedWebViewManager.shared
         let wv = manager.webView
@@ -222,8 +224,6 @@ class NoteWindowController: NSWindowController, NSWindowDelegate {
             return coordinator?.windowManager.getWindowController(for: id)
         }()
         let oldHadWebView = oldWC?.hasWebView ?? false
-
-        guard let currentNote = coordinator?.noteManager.getNote(note.id) else { return }
 
         // 1. Synchronous snapshot of old content (WebView still in old window)
         if oldHadWebView {
@@ -371,10 +371,12 @@ class NoteWindowController: NSWindowController, NSWindowDelegate {
     // MARK: - NSWindowDelegate Methods
 
     func windowDidBecomeKey(_ notification: Notification) {
+        refreshInteraction()
         attachWebView()
     }
 
     func windowDidResignKey(_ notification: Notification) {
+        refreshInteraction()
         // Detach is handled by the NEW window's attachWebView().
         // This avoids the async timing race where detach would run
         // after the new window has already switched content.
@@ -429,7 +431,20 @@ class NoteWindowController: NSWindowController, NSWindowDelegate {
     // MARK: - Public Methods
 
     func setOpacity(_ opacity: Double) {
-        window?.alphaValue = CGFloat(opacity)
+        note.opacity = opacity
+        opacitySlider?.doubleValue = opacity
+        refreshInteraction()
+    }
+
+    func refreshInteraction(optionHeld: Bool = NSEvent.modifierFlags.contains(.option)) {
+        guard let window = window else { return }
+        let focused = window.isKeyWindow && NSApp.isActive
+        let ignoresMouse = note.alwaysOnTop && !focused && !optionHeld
+        if window.ignoresMouseEvents != ignoresMouse {
+            window.ignoresMouseEvents = ignoresMouse
+        }
+        let opacity = CGFloat(focused ? note.opacity : (coordinator?.unfocusedOpacity ?? note.opacity))
+        if window.alphaValue != opacity { window.alphaValue = opacity }
     }
 
     func setColorTheme(_ theme: String) {
@@ -453,6 +468,7 @@ class NoteWindowController: NSWindowController, NSWindowDelegate {
         }
 
         pinButton?.alphaValue = alwaysOnTop ? 1.0 : 0.25
+        refreshInteraction()
     }
 
     var noteId: UUID { note.id }

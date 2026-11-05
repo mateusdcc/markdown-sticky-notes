@@ -10,6 +10,8 @@ class AppCoordinator: ObservableObject {
     @Published var windowManager: WindowManager
     @Published var mathRenderer: MathRenderer
     @Published var mathPreamble: String
+    @Published private(set) var focusedOpacity: Double
+    @Published private(set) var unfocusedOpacity: Double
 
     // MARK: - Properties
 
@@ -21,6 +23,8 @@ class AppCoordinator: ObservableObject {
     private let persistenceManager: PersistenceManager
     private var cancellables = Set<AnyCancellable>()
     private var settingsWindow: NSWindow?
+    private var interactionTimer: Timer?
+    private var optionClickMonitor: Any?
 
     // MARK: - Initialization
 
@@ -33,6 +37,8 @@ class AppCoordinator: ObservableObject {
         let initialPreamble = pm.loadMathPreamble()
         self.mathRenderer = initialRenderer
         self.mathPreamble = initialPreamble
+        self.focusedOpacity = pm.loadOpacity("focusedOpacity", default: 0.95)
+        self.unfocusedOpacity = pm.loadOpacity("unfocusedOpacity", default: 0.55)
 
         // Wire up SharedWebViewManager
         SharedWebViewManager.shared.coordinator = self
@@ -41,6 +47,51 @@ class AppCoordinator: ObservableObject {
 
         setupBindings()
         openInitialWindows()
+        // Poll current modifier state without requiring global keyboard-monitor permissions.
+        let timer = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in
+            self?.refreshNoteInteraction()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        interactionTimer = timer
+        optionClickMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+            if event.modifierFlags.contains(.option), let window = event.window,
+               let id = self?.windowManager.noteId(for: window),
+               self?.noteManager.getNote(id)?.alwaysOnTop == true {
+                NSApp.activate(ignoringOtherApps: true)
+                window.makeKeyAndOrderFront(nil)
+            }
+            return event
+        }
+        for notification in [NSApplication.didBecomeActiveNotification, NSApplication.didResignActiveNotification] {
+            NotificationCenter.default.publisher(for: notification)
+                .sink { [weak self] _ in self?.refreshNoteInteraction() }
+                .store(in: &cancellables)
+        }
+    }
+
+    deinit {
+        interactionTimer?.invalidate()
+        if let monitor = optionClickMonitor { NSEvent.removeMonitor(monitor) }
+    }
+
+    func refreshNoteInteraction() {
+        for id in windowManager.getAllWindowIds() {
+            windowManager.getWindowController(for: id)?.refreshInteraction()
+        }
+    }
+
+    func setFocusedOpacity(_ opacity: Double) {
+        focusedOpacity = min(1, max(0.2, opacity))
+        persistenceManager.saveOpacity(focusedOpacity, forKey: "focusedOpacity")
+        for note in noteManager.notes {
+            setNoteOpacity(noteId: note.id, opacity: focusedOpacity)
+        }
+    }
+
+    func setUnfocusedOpacity(_ opacity: Double) {
+        unfocusedOpacity = min(1, max(0.2, opacity))
+        persistenceManager.saveOpacity(unfocusedOpacity, forKey: "unfocusedOpacity")
+        refreshNoteInteraction()
     }
 
     // MARK: - Public Methods
@@ -48,7 +99,9 @@ class AppCoordinator: ObservableObject {
     /// Create a new note and open its window on the current screen
     func createNewNote() {
         let position = calculateNewNotePosition()
-        let note = noteManager.createNote(position: position)
+        var note = noteManager.createNote(position: position)
+        note.opacity = focusedOpacity
+        noteManager.updateNoteWindow(note.id, opacity: focusedOpacity)
         windowManager.openWindow(for: note, coordinator: self)
     }
 
