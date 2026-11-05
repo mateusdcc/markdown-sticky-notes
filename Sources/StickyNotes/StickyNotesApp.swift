@@ -192,7 +192,7 @@ struct SettingsView: View {
                 Text(coordinator.unfocusedOpacity, format: .percent.precision(.fractionLength(0)))
                     .monospacedDigit().frame(width: 44, alignment: .trailing)
             }
-            Text("These settings apply to all notes. Use the sun and moon knobs in a note’s titlebar to adjust it individually.")
+            Text("These settings apply to all notes. Use the blue (focused) and orange (unfocused) titlebar sliders to adjust it individually.")
                 .font(.caption).foregroundColor(.secondary)
             Text("Unfocused pinned notes let clicks pass through. Hold Option (⌥) and click a note to focus and edit it.")
                 .font(.caption).foregroundColor(.secondary)

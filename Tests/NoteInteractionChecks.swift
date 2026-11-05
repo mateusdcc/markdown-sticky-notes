@@ -11,7 +11,7 @@ struct NoteInteractionTests {
     static func main() {
         testPinnedNoteClickThroughAndFocus()
         testOpacitySettingsPersistAndClamp()
-        testRotaryOpacityControls()
+        testStackedOpacityControls()
         print("Click-through, pinning, focus, and opacity persistence checks passed.")
     }
     static func testPinnedNoteClickThroughAndFocus() {
@@ -49,13 +49,16 @@ struct NoteInteractionTests {
         assert(window.ignoresMouseEvents)
     }
 
-    static func testRotaryOpacityControls() {
+    static func testStackedOpacityControls() {
         let note = Note(opacity: 0.9, unfocusedOpacity: 0.4, alwaysOnTop: true)
         let controller = NoteWindowController(note: note, coordinator: nil)
         let window = controller.window!
         let controls = window.titlebarAccessoryViewControllers[0].view.subviews.compactMap { $0 as? NSSlider }
         assert(controls.count == 2)
-        assert(controls.allSatisfy { $0.sliderType == .circular })
+        assert(controls.allSatisfy { $0.sliderType == .linear })
+        assert(controls[0].frame.minY >= controls[1].frame.maxY)
+        assert(controls[0].frame.minX == controls[1].frame.minX)
+        assert(controls[0].frame.width == 50 && controls[1].frame.width == 50)
         assert(controls[0].doubleValue == 0.9 && controls[1].doubleValue == 0.4)
         controls[0].doubleValue = 0.8
         controls[0].sendAction(controls[0].action, to: controls[0].target)

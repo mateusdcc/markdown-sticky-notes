@@ -90,25 +90,17 @@ class NoteWindowController: NSWindowController, NSWindowDelegate {
             panel.removeTitlebarAccessoryViewController(at: 0)
         }
 
-        let container = TitlebarControlsView(frame: NSRect(x: 0, y: 0, width: 196, height: 22))
+        let container = TitlebarControlsView(frame: NSRect(x: 0, y: 0, width: 190, height: 22))
         var xOffset: CGFloat = 4
 
-        // Native rotary controls: focused (sun) and unfocused (moon).
-        for (index, symbol) in ["sun.max.fill", "moon.fill"].enumerated() {
+        // Two slim sliders share the original opacity control's footprint.
+        for index in 0...1 {
             let label = index == 0 ? "Focused opacity" : "Unfocused opacity"
-            let icon = NSImageView(frame: NSRect(x: xOffset, y: 6, width: 9, height: 10))
-            icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
-            icon.contentTintColor = .darkGray
-            container.addSubview(icon)
-
-            let slider = NSSlider(frame: NSRect(x: xOffset + 10, y: 1, width: 20, height: 20))
-            slider.appearance = NSAppearance(named: .aqua)
-            slider.wantsLayer = true
-            slider.layer?.cornerRadius = 10
-            slider.layer?.borderWidth = 1
-            slider.layer?.borderColor = NSColor.black.withAlphaComponent(0.18).cgColor
-            slider.sliderType = .circular
-            slider.controlSize = .small
+            let slider = NSSlider(frame: NSRect(x: xOffset, y: index == 0 ? 11 : 0, width: 50, height: 11))
+            let cell = OpacitySliderCell()
+            cell.fillColor = index == 0 ? .systemBlue : .systemOrange
+            slider.cell = cell
+            slider.controlSize = .mini
             slider.minValue = 0.2
             slider.maxValue = 1.0
             slider.isContinuous = true
@@ -119,8 +111,8 @@ class NoteWindowController: NSWindowController, NSWindowDelegate {
             slider.toolTip = "\(label): \(Int((slider.doubleValue * 100).rounded()))% (this note)"
             if index == 0 { opacitySlider = slider } else { unfocusedOpacitySlider = slider }
             container.addSubview(slider)
-            xOffset += 32
         }
+        xOffset += 58
 
         // Pin button
         let pin = NSButton(frame: NSRect(x: xOffset, y: 2, width: 18, height: 18))
@@ -526,6 +518,35 @@ class NoteWindowController: NSWindowController, NSWindowDelegate {
 }
 
 // MARK: - Titlebar Views
+
+private class OpacitySliderCell: NSSliderCell {
+    var fillColor: NSColor = .systemBlue
+
+    override func knobRect(flipped: Bool) -> NSRect {
+        let rect = super.knobRect(flipped: flipped)
+        return NSRect(x: rect.midX - 4, y: (controlView?.bounds.midY ?? rect.midY) - 4, width: 8, height: 8)
+    }
+
+    override func drawBar(inside rect: NSRect, flipped: Bool) {
+        let endInset = super.knobRect(flipped: flipped).width / 2
+        let track = NSRect(x: rect.minX + endInset, y: (controlView?.bounds.midY ?? rect.midY) - 1.5, width: max(0, rect.width - 2 * endInset), height: 3)
+        NSColor.black.withAlphaComponent(0.12).setFill()
+        NSBezierPath(roundedRect: track, xRadius: 1.5, yRadius: 1.5).fill()
+        var filled = track
+        filled.size.width = min(track.width, max(0, knobRect(flipped: flipped).midX - track.minX))
+        fillColor.setFill()
+        NSBezierPath(roundedRect: filled, xRadius: 1.5, yRadius: 1.5).fill()
+    }
+
+    override func drawKnob(_ rect: NSRect) {
+        let knob = NSBezierPath(ovalIn: rect.insetBy(dx: 0.5, dy: 0.5))
+        NSColor.white.setFill()
+        knob.fill()
+        NSColor.black.withAlphaComponent(0.2).setStroke()
+        knob.lineWidth = 0.5
+        knob.stroke()
+    }
+}
 
 private class TitlebarControlsView: NSView {
     override func resetCursorRects() {
